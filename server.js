@@ -4,6 +4,7 @@ const app = express();
 const path = require('path');
 const server = require("http").createServer(app);
 
+const players = {};
 
 const PORT = 5000;
 
@@ -21,7 +22,30 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Lorsqu'un client se connecte
 io.on('connection', (socket) => {
     console.log('Un joueur s\'est connecté :', socket.id);
-  
+
+    // Chaque joueur a aussi une couleur aléatoire.
+    players[socket.id] = {
+        id: socket.id, // ID unique pour identifier le joueur
+        x: Math.random() * 10 - 5, // Position X du joueur (aléatoire)
+        y: 0, // Position Y (0 car les joueurs sont sur le sol)
+        z: Math.random() * 10 - 5, // Position Z du joueur (aléatoire)
+    };
+
+    console.log(Object.entries(players).filter( infos => {
+        console.log("player", infos[1])
+        return infos[1].team === 1
+    }).length, Object.entries(players).filter( infos => infos[1].team === 2).length)
+
+    if (Object.entries(players).filter( infos => infos[1].team === 1).length > Object.entries(players).filter(infos => infos[1].team === 2).length) {
+        players[socket.id].color = "orange"
+        players[socket.id].team = 2;
+    } else {
+        players[socket.id].color = "red"
+        players[socket.id].team = 1;
+    }
+    console.log(players)
+    io.sockets.emit("players", players);
+
     // Envoyer la position des objets lorsque le client demande une mise à jour
     socket.on('updatePosition', (data) => {
       // Diffuser la position de la balle et des cubes aux autres clients
@@ -31,6 +55,12 @@ io.on('connection', (socket) => {
     // Lorsqu'un client se déconnecte
     socket.on('disconnect', () => {
       console.log('Un joueur s\'est déconnecté :', socket.id);
+
+        // Retirer le joueur de la liste des joueurs connectés
+        delete players[socket.id];
+
+        // Informer tous les autres joueurs qu'un joueur s'est déconnecté
+        io.emit('playerDisconnected', socket.id);
     });
 });
 

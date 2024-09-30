@@ -50,33 +50,19 @@
     return cube;
   }
   
-  socket.on('init', (serverPlayers) => {
+  socket.on('players', (serverPlayers) => {
+    console.log(serverPlayers)
     for (let id in serverPlayers) {
+      if (!players[id]) {
         players[id] = createPlayerCube(serverPlayers[id]);
+      }
     }
   });
 
   // Ajout d'un nouveau joueur
-  socket.on('newPlayer', (player) => {
-    players[player.id] = createPlayerCube(player);
-  });
-
-  socket.on('playerMoved', (player) => {
-    if (players[player.id]) {
-        players[player.id].position.set(player.x, player.y, player.z);
-
-
-        // Mettre à jour le collider du joueur déplacé
-        colliders[player.id].setFromObject(players[player.id]);
-    }
-  });
-
-  socket.on('playerDisconnected', (id) => {
-    if (players[id]) {
-        scene.remove(players[id]);
-        delete players[id];
-        delete colliders[id]; // Supprimer également le collider
-    }
+  socket.on('newPlayer', (data) => {
+    console.log(data)
+    players[data.player.id] = createPlayerCube(data.player);
   });
 
     // Ajouter une sphère (balle)
@@ -89,7 +75,7 @@
     camera.position.set(0, 10, 15);
     camera.lookAt(0, 0, 0);
     // Ajouter deux cubes (joueurs)
-    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+    /*const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
     const player1Material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
     const player2Material = new THREE.MeshBasicMaterial({ color: 0x0000ff });
     const player1 = new THREE.Mesh(cubeGeometry, player1Material);
@@ -97,7 +83,7 @@
     player1.position.set(-5, 0.5, 0);
     player2.position.set(5, 0.5, 0);
     scene.add(player1);
-    scene.add(player2);
+    scene.add(player2);*/
   
     camera.position.set(0, 10, 15);
     camera.lookAt(0, 0, 0);
@@ -110,27 +96,37 @@
     animate();
 
     // Gérer les mouvements avec les touches
-    window.addEventListener('keydown', (event) => {
-      switch (event.key) {
-        case 'ArrowUp':
-          player1.position.z -= 0.1;
-          break;
-        case 'ArrowDown':
-          player1.position.z += 0.1;
-          break;
-        case 'ArrowLeft':
-          player1.position.x -= 0.1;
-          break;
-        case 'ArrowRight':
-          player1.position.x += 0.1;
-          break;
+    document.addEventListener('keydown', (event) => {
+      const player = players[socket.id];
+      if (player) {
+        let prevPosition = player.position.clone(); // Stocker l'ancienne position
+
+        if (event.key === 'ArrowUp') player.position.z -= moveSpeed;
+        if (event.key === 'ArrowDown') player.position.z += moveSpeed;
+        if (event.key === 'ArrowLeft') player.position.x -= moveSpeed;
+        if (event.key === 'ArrowRight') player.position.x += moveSpeed;
+
+        // Mettre à jour le collider du joueur
+        colliders[socket.id].setFromObject(player);
+
+// Vérifier les collisions avec les autres joueurs
+        let collisionDetected = false;
+        for (let id in colliders) {
+          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
+            collisionDetected = true;
+            break;
+          }
+        }
+
+
+        // Si collision, annuler le mouvement
+        if (collisionDetected) {
+          player.position.copy(prevPosition);
+        } else {
+          // Envoi des nouvelles positions au serveur uniquement si pas de collision
+          socket.emit('move', { x: player.position.x, z: player.position.z });
+        }
       }
-      // Envoyer la position mise à jour au serveur
-      socket.emit('updatePosition', {
-        player1: { x: player1.position.x, z: player1.position.z },
-        player2: { x: player2.position.x, z: player2.position.z },
-        ball: { x: ball.position.x, z: ball.position.z }
-      });
     });
 
     // Recevoir la mise à jour de la position des autres clients
@@ -141,6 +137,59 @@
       player2.position.z = data.player2.z;
       ball.position.x = data.ball.x;
       ball.position.z = data.ball.z;
+    });
+
+
+    // Mise à jour de la position des joueurs
+    socket.on('playerMoved', (player) => {
+      if (players[player.id]) {
+        players[player.id].position.set(player.x, player.y, player.z);
+        colliders[player.id].setFromObject(players[player.id]);
+      }
+    });
+
+    // Suppression d'un joueur déconnecté
+    socket.on('playerDisconnected', (id) => {
+      if (players[id]) {
+        scene.remove(players[id]);
+        delete players[id];
+        delete colliders[id];
+      }
+    });
+
+    // Contrôle du joueur local (utilisation des touches de direction)
+    const moveSpeed = 0.1;
+    document.addEventListener('keydown', (event) => {
+      const player = players[socket.id];
+      if (player) {
+        let prevPosition = player.position.clone(); // Stocker l'ancienne position
+
+        if (event.key === 'ArrowUp') player.position.z -= moveSpeed;
+        if (event.key === 'ArrowDown') player.position.z += moveSpeed;
+        if (event.key === 'ArrowLeft') player.position.x -= moveSpeed;
+        if (event.key === 'ArrowRight') player.position.x += moveSpeed;
+
+        // Mettre à jour le collider du joueur
+        colliders[socket.id].setFromObject(player);
+
+// Vérifier les collisions avec les autres joueurs
+        let collisionDetected = false;
+        for (let id in colliders) {
+          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
+            collisionDetected = true;
+            break;
+          }
+        }
+
+
+        // Si collision, annuler le mouvement
+        if (collisionDetected) {
+          player.position.copy(prevPosition);
+        } else {
+          // Envoi des nouvelles positions au serveur uniquement si pas de collision
+          socket.emit('move', { x: player.position.x, z: player.position.z });
+        }
+      }
     });
   </script>
 </body>
