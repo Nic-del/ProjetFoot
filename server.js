@@ -49,7 +49,7 @@ io.on('connection', (socket) => {
     // Envoyer la position des objets lorsque le client demande une mise à jour
     socket.on('updatePosition', (data) => {
       // Diffuser la position de la balle et des cubes aux autres clients
-      socket.broadcast.emit('positionUpdate', data);
+      socket.broadcast.emit('playerMoved', data);
     });
   
     // Lorsqu'un client se déconnecte
