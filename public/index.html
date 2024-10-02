@@ -13,6 +13,7 @@
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
+    const clock = new THREE.Clock();
     const heightPlane = 20;
     const widthPlane = 10;
     const sizeCube = 1;
@@ -43,6 +44,7 @@
     // Liste des cubes joueurs et colliders
    const players = {};
    const colliders = {};
+    const keyStates = {};
 
    function createPlayerCube(player) {
     const geometryCube = new THREE.BoxGeometry(sizeCube, sizeCube, sizeCube);
@@ -100,10 +102,61 @@
 
     // Fonction de rendu
     function animate() {
+      const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+      controls( deltaTime );
       requestAnimationFrame(animate);
       renderer.render(scene, camera);
     }
-    animate();
+
+    function controls( deltaTime ) {
+
+      // gives a bit of air control
+      const speedDelta = deltaTime * 25;
+
+      const player = players[socket.id];
+      if (player) {
+        let prevPosition = player.position.clone(); // Stocker l'ancienne position
+
+        if ( keyStates[ 'KeyW' ] && player.position.z - moveSpeed > (-widthPlane/2 + sizeCube) ) {
+          player.position.z -= speedDelta;
+        }
+
+        if ( keyStates[ 'KeyS' ] && player.position.z + moveSpeed < widthPlane/2 && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube) ) {
+            player.position.z += speedDelta;
+        }
+
+        if ( keyStates[ 'KeyA' ] && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube)  ) {
+            player.position.x -= speedDelta;
+        }
+
+        if ( keyStates[ 'KeyD' ] && player.position.x + moveSpeed < (heightPlane/2 - sizeCube) ) {
+            player.position.x += speedDelta;
+        }
+        // Mettre à jour le collider du joueur
+        colliders[socket.id].setFromObject(player);
+
+        // Vérifier les collisions avec les autres joueurs
+        let collisionDetected = false;
+        for (let id in colliders) {
+          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
+            collisionDetected = true;
+            break;
+          }
+        }
+
+
+        // Si collision, annuler le mouvement
+        if (collisionDetected) {
+          player.position.copy(prevPosition);
+        } else {
+          // Envoi des nouvelles positions au serveur uniquement si pas de collision
+          socket.emit('move', { x: player.position.x, z: player.position.z });
+        }
+      }
+
+    }
+
+    renderer.setAnimationLoop( animate );
 
     // Recevoir la mise à jour de la position des autres clients
     socket.on('positionUpdate', (data) => {
@@ -135,38 +188,18 @@
 
     // Contrôle du joueur local (utilisation des touches de direction)
     const moveSpeed = 0.1;
-    document.addEventListener('keydown', (event) => {
-      const player = players[socket.id];
-      if (player) {
-        let prevPosition = player.position.clone(); // Stocker l'ancienne position
+    const STEPS_PER_FRAME = 5;
+    document.addEventListener( 'keydown', ( event ) => {
 
-        if (event.key === 'ArrowUp' && player.position.z - moveSpeed > (-widthPlane/2 + sizeCube)) player.position.z -= moveSpeed;
-        if (event.key === 'ArrowDown' && player.position.z + moveSpeed < widthPlane/2) player.position.z += moveSpeed;
-        if (event.key === 'ArrowLeft' && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube)) player.position.x -= moveSpeed;
-        if (event.key === 'ArrowRight' && player.position.x + moveSpeed < (heightPlane/2 - sizeCube)) player.position.x += moveSpeed;
+      keyStates[ event.code ] = true;
 
-        // Mettre à jour le collider du joueur
-        colliders[socket.id].setFromObject(player);
+    } );
 
-// Vérifier les collisions avec les autres joueurs
-        let collisionDetected = false;
-        for (let id in colliders) {
-          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
-            collisionDetected = true;
-            break;
-          }
-        }
+    document.addEventListener( 'keyup', ( event ) => {
 
+      keyStates[ event.code ] = false;
 
-        // Si collision, annuler le mouvement
-        if (collisionDetected) {
-          player.position.copy(prevPosition);
-        } else {
-          // Envoi des nouvelles positions au serveur uniquement si pas de collision
-          socket.emit('move', { x: player.position.x, z: player.position.z });
-        }
-      }
-    });
+    } );
   </script>
 </body>
 </html>
