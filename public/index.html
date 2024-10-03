@@ -123,7 +123,7 @@
           player.position.z -= speedDelta;
         }
 
-        if ( keyStates[ 'KeyS' ] && player.position.z + moveSpeed < widthPlane/2 && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube) ) {
+        if ( keyStates[ 'KeyS' ] && player.position.z + moveSpeed < widthPlane/2 ) {
             player.position.z += speedDelta;
         }
 
