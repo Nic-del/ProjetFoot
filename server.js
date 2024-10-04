@@ -51,6 +51,11 @@ io.on('connection', (socket) => {
       // Diffuser la position de la balle et des cubes aux autres clients
       socket.broadcast.emit('playerMoved', data);
     });
+
+    socket.on('ballMoved', (data) => {
+      // Diffuser la position de la balle et des cubes aux autres clients
+      socket.broadcast.emit('ballMoved', data);
+    });
   
     // Lorsqu'un client se déconnecte
     socket.on('disconnect', () => {

@@ -112,10 +112,17 @@
     // check colision with borders, if the ball is out of the field change direction
     if (ball.position.x <= (-heightPlane/2)+sizeBall*2 || ball.position.x >= (heightPlane/2)-sizeBall*2) {
       velocity.x = -velocity.x * restitution;
+      return true;
     }
     if (ball.position.z <= (-widthPlane/2)+sizeBall*4 || ball.position.z >= widthPlane/2+sizeBall) { // +sizeBall pour éviter que la balle ne reste dans le mur, les x2 et x4 sont tester
       velocity.z = -velocity.z * restitution;
+      return true;
     }
+    return false;
+  }
+
+  function sendBallPosition() {
+    socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
   }
 
   socket.on('players', (serverPlayers) => {
@@ -153,7 +160,9 @@
       controls( deltaTime );
       requestAnimationFrame(animate);
       updateBallPhysics();
-      ballColisions();
+      if (!ballColisions()) {
+        sendBallPosition();
+      }
       renderer.render(scene, camera);
     }
 
@@ -190,7 +199,7 @@
           player.position.copy(prevPosition);
         } else {
           // Envoi des nouvelles positions au serveur uniquement si pas de collision
-          socket.emit('move', { x: player.position.x, z: player.position.z });
+          socket.emit('updatePosition', { x: player.position.x, y:player.position.z, z: player.position.z , id : socket.id });
         }
       }
     }
@@ -205,7 +214,12 @@
           players[user.id].position.set(user.x, 0, user.z);
           colliders[user.id].setFromObject(players[user.id]); // Mettre à jour le collider
       }
-  });
+    });
+
+    // Mise à jour de la position de la balle
+    socket.on('ballMoved', (data) => {
+      ball.position.set(data.x, data.y, data.z);
+    });
 
     // Suppression d'un joueur déconnecté
     socket.on('playerDisconnected', (id) => {
