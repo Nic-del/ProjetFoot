@@ -51,6 +51,17 @@
     ball.position.set(0, 0.5, 0);
     scene.add(ball);
 
+    // Ajouter une zone de but à gauche et a droite du terrain
+    const goalGeometry = new THREE.BoxGeometry(0.1, 2, 2);
+    const goalMaterial1 = new THREE.MeshBasicMaterial({ color: "red" });
+    const goalMaterial2 = new THREE.MeshBasicMaterial({ color: "orange" });
+    const goal1 = new THREE.Mesh(goalGeometry, goalMaterial1);
+    const goal2 = new THREE.Mesh(goalGeometry, goalMaterial2);
+    goal1.position.set(-heightPlane/2, -0.5, 0);
+    goal2.position.set(heightPlane/2, -0.5, 0);
+    scene.add(goal1);
+    scene.add(goal2);
+
     // Ajouter le plan (terrain de foot)
     /*const planeGeometry = new THREE.PlaneGeometry(20, 10);
     const planeMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
@@ -63,21 +74,42 @@
    const colliders = {};
    const keyStates = {};
 
-   function createPlayerCube(player) {
-    const geometryCube = new THREE.BoxGeometry(sizeCube, sizeCube, sizeCube);
-    const materialCube = new THREE.MeshBasicMaterial({ color: player.color });
-    const cube = new THREE.Mesh(geometryCube, materialCube);
-    cube.position.set(player.x, player.y, player.z);
-    scene.add(cube);
+   let scoreTeam1 = 0;
+   let scoreTeam2 = 0;
+   let scoreTextMesh; // Variable pour stocker le mesh du texte
+
+   // add score texte to the scene
+    // add score texte to the scene, use procedural text geometry
+    const loader = new THREE.FontLoader();
+    loader.load( 'https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function ( font ) {
+      const geometry = new THREE.TextGeometry( `Score: Team 1: ${scoreTeam1} - Team 2: ${scoreTeam2}`, {
+        font: font,
+        size: 0.5,
+        height: 0.1,
+        curveSegments: 12,
+        bevelEnabled: false
+      } );
+      const material = new THREE.MeshBasicMaterial( { color: 0x00ff00 } );
+      scoreTextMesh = new THREE.Mesh( geometry, material );
+      scoreTextMesh.position.set(-9, 4, 0);
+      scene.add( scoreTextMesh );
+    } );
+
+ function createPlayerCube(player) {
+  const geometryCube = new THREE.BoxGeometry(sizeCube, sizeCube, sizeCube);
+  const materialCube = new THREE.MeshBasicMaterial({ color: player.color });
+  const cube = new THREE.Mesh(geometryCube, materialCube);
+  cube.position.set(player.x, player.y, player.z);
+  scene.add(cube);
 
 
-    // Créer un collider (bounding box) pour ce cube 
-    const collider = new THREE.Box3().setFromObject(cube);
-    colliders[player.id] = collider;
+  // Créer un collider (bounding box) pour ce cube
+  const collider = new THREE.Box3().setFromObject(cube);
+  colliders[player.id] = collider;
 
 
-    return cube;
-  }
+  return cube;
+ }
   
   function updateBallPhysics() {
     // Ajouter l'effet de gravité sur la vitesse verticale
@@ -125,6 +157,26 @@
     socket.emit('ballMoved', { x: ball.position.x, y: ball.position.y, z: ball.position.z });
   }
 
+  function checkBut() {
+     const marge = 0.1;
+    // check if the ball is in goal1 or goal2
+    if (ball.position.x <= (-heightPlane/2)+sizeBall*2+marge && ball.position.z >= 1 && ball.position.z <= 2) {
+      console.log("Goal for player 2");
+      ball.position.set(0, 0.5, 0);
+      velocity.set(0, 0, 0);
+      sendBallPosition();
+      updateScore(2);
+      socket.emit('goal', 2);
+    } else if (ball.position.x >= (heightPlane/2)-sizeBall*2-marge && ball.position.z >= 1 && ball.position.z <= 2) {
+      console.log("Goal for player 1");
+      ball.position.set(0, 0.5, 0);
+      velocity.set(0, 0, 0);
+      sendBallPosition();
+      updateScore(1);
+      socket.emit('goal', 1);
+    }
+  }
+
   socket.on('players', (serverPlayers) => {
     for (let id in serverPlayers) {
       if (!players[id]) {
@@ -137,6 +189,38 @@
   socket.on('newPlayer', (data) => {
     players[data.player.id] = createPlayerCube(data.player);
   });
+
+  function updateScore(team) {
+    if (team === 1) {
+      scoreTeam1++;
+    } else {
+      scoreTeam2++;
+    }
+    updateScoreText()
+  }
+
+    function updateScoreText() {
+      if (scoreTextMesh) {
+        scene.remove(scoreTextMesh); // Retirer l'ancien texte de la scène
+      }
+
+      const loader = new THREE.FontLoader();
+      loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+        const geometry = new THREE.TextGeometry(`Score: Team 1: ${scoreTeam1} - Team 2: ${scoreTeam2}`, {
+          font: font,
+          size: 0.5,
+          height: 0.1,
+          curveSegments: 12,
+          bevelEnabled: false
+        });
+
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        scoreTextMesh = new THREE.Mesh(geometry, material);
+        scoreTextMesh.position.set(-9, 4, 0);
+        scene.add(scoreTextMesh);
+      });
+    }
+
 
     camera.position.set(0, 0, 0);
     camera.lookAt(0, 0, 0);
@@ -160,6 +244,7 @@
       controls( deltaTime );
       requestAnimationFrame(animate);
       updateBallPhysics();
+      checkBut();
       if (!ballColisions()) {
         sendBallPosition();
       }
@@ -219,6 +304,11 @@
     // Mise à jour de la position de la balle
     socket.on('ballMoved', (data) => {
       ball.position.set(data.x, data.y, data.z);
+    });
+
+    // goal
+    socket.on('goal', (team) => {
+      updateScore(team);
     });
 
     // Suppression d'un joueur déconnecté
