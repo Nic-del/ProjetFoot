@@ -10,15 +10,19 @@
   </style>
 </head>
 <body>
+  <div id="container"></div>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" integrity="sha384-2huaZvOR9iDzHqslqwpR87isEmrfxqyWOF7hr7BY6KG0+hVKLoEXMPUJw3ynWuhO" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
+    const clock = new THREE.Clock();
+    const STEPS_PER_FRAME = 5;
     const heightPlane = 20;
     const widthPlane = 10;
     const sizeCube = 1;
+    const sizeBall = 0.5;
     const gravity = -0.02; 
     let velocity = new THREE.Vector3(0, 0, 0); //Pour la balle
-    const damping = 0.98; // Pour réduire la vitesse 
+    const damping = 0.98; // Pour réduire la vitesse
     const restitution = 0.8; 
     const playerPushForce = 0.1;
 
@@ -30,7 +34,8 @@
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer();
     renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+    const container = document.getElementById( 'container' );
+    container.appendChild(renderer.domElement);
 
     const geometry = new THREE.PlaneGeometry( heightPlane, widthPlane );
     const material = new THREE.MeshBasicMaterial( {color: 0x00ff00} );
@@ -38,6 +43,13 @@
     plane.rotation.x = -Math.PI / 2;
     plane.position.y = -1; // Positionner le plan juste en dessous des cubes
     scene.add( plane );
+
+    // Ajouter une sphère (balle)
+    const sphereGeometry = new THREE.SphereGeometry(sizeBall);
+    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const ball = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    ball.position.set(0, 0.5, 0);
+    scene.add(ball);
 
     // Ajouter le plan (terrain de foot)
     /*const planeGeometry = new THREE.PlaneGeometry(20, 10);
@@ -49,6 +61,7 @@
     // Liste des cubes joueurs et colliders
    const players = {};
    const colliders = {};
+   const keyStates = {};
 
    function createPlayerCube(player) {
     const geometryCube = new THREE.BoxGeometry(sizeCube, sizeCube, sizeCube);
@@ -95,6 +108,16 @@
     }
   }
 
+  function ballColisions() {
+    // check colision with borders, if the ball is out of the field change direction
+    if (ball.position.x <= (-heightPlane/2)+sizeBall*2 || ball.position.x >= (heightPlane/2)-sizeBall*2) {
+      velocity.x = -velocity.x * restitution;
+    }
+    if (ball.position.z <= (-widthPlane/2)+sizeBall*4 || ball.position.z >= widthPlane/2+sizeBall) { // +sizeBall pour éviter que la balle ne reste dans le mur, les x2 et x4 sont tester
+      velocity.z = -velocity.z * restitution;
+    }
+  }
+
   socket.on('players', (serverPlayers) => {
     for (let id in serverPlayers) {
       if (!players[id]) {
@@ -107,13 +130,6 @@
   socket.on('newPlayer', (data) => {
     players[data.player.id] = createPlayerCube(data.player);
   });
-
-    // Ajouter une sphère (balle)
-    const sphereGeometry = new THREE.SphereGeometry(0.5, 32, 32);
-    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-    const ball = new THREE.Mesh(sphereGeometry, sphereMaterial);
-    ball.position.set(0, 0.5, 0);
-    scene.add(ball);
 
     camera.position.set(0, 0, 0);
     camera.lookAt(0, 0, 0);
@@ -133,11 +149,54 @@
 
     // Fonction de rendu
     function animate() {
+      const deltaTime = Math.min( 0.05, clock.getDelta() ) / STEPS_PER_FRAME;
+      controls( deltaTime );
       requestAnimationFrame(animate);
       updateBallPhysics();
+      ballColisions();
       renderer.render(scene, camera);
     }
-    animate();
+
+    function controls( deltaTime ) {
+      // gives a bit of air control
+      const speedDelta = deltaTime * 25;
+      const player = players[socket.id];
+      if (player) {
+        let prevPosition = player.position.clone(); // Stocker l'ancienne position
+        if ( keyStates[ 'KeyW' ] && player.position.z - moveSpeed > (-widthPlane/2 + sizeCube) ) {
+          player.position.z -= speedDelta;
+        }
+        if ( keyStates[ 'KeyS' ] && player.position.z + moveSpeed < widthPlane/2 ) {
+          player.position.z += speedDelta;
+        }
+        if ( keyStates[ 'KeyA' ] && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube)  ) {
+          player.position.x -= speedDelta;
+        }
+        if ( keyStates[ 'KeyD' ] && player.position.x + moveSpeed < (heightPlane/2 - sizeCube) ) {
+          player.position.x += speedDelta;
+        }
+        // Mettre à jour le collider du joueur
+        colliders[socket.id].setFromObject(player);
+        // Vérifier les collisions avec les autres joueurs
+        let collisionDetected = false;
+        for (let id in colliders) {
+          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
+            collisionDetected = true;
+            break;
+          }
+        }
+        // Si collision, annuler le mouvement
+        if (collisionDetected) {
+          player.position.copy(prevPosition);
+        } else {
+          // Envoi des nouvelles positions au serveur uniquement si pas de collision
+          socket.emit('move', { x: player.position.x, z: player.position.z });
+        }
+      }
+    }
+
+    //renderer.setAnimationLoop( animate ); // change la physique du jeu et de la balle, a voir pourquoi
+    animate()
 
     // Mise à jour de la position des joueurs
     socket.on('playerMoved', (user) => {
@@ -160,37 +219,19 @@
     // Contrôle du joueur local (utilisation des touches de direction)
     const moveSpeed = 0.1;
     document.addEventListener('keydown', (event) => {
-      const player = players[socket.id];
-      if (player) {
-        let prevPosition = player.position.clone(); // Stocker l'ancienne position
-
-        if (event.key === 'ArrowUp' && player.position.z - moveSpeed > (-widthPlane/2 + sizeCube)) player.position.z -= moveSpeed;
-        if (event.key === 'ArrowDown' && player.position.z + moveSpeed < widthPlane/2) player.position.z += moveSpeed;
-        if (event.key === 'ArrowLeft' && player.position.x - moveSpeed > (-heightPlane/2 + sizeCube)) player.position.x -= moveSpeed;
-        if (event.key === 'ArrowRight' && player.position.x + moveSpeed < (heightPlane/2 - sizeCube)) player.position.x += moveSpeed;
-
-        // Mettre à jour le collider du joueur
-        colliders[socket.id].setFromObject(player);
-
-// Vérifier les collisions avec les autres joueurs
-        let collisionDetected = false;
-        for (let id in colliders) {
-          if (id !== socket.id && colliders[socket.id].intersectsBox(colliders[id])) {
-            collisionDetected = true;
-            break;
-          }
-        }
-
-
-        // Si collision, annuler le mouvement
-        if (collisionDetected) {
-          player.position.copy(prevPosition);
-        } else {
-          // Envoi des nouvelles positions au serveur uniquement si pas de collision
-          socket.emit('updatePosition', { x: player.position.x, y:player.position.z, z: player.position.z , id : socket.id });
-        }
-      }
+      keyStates[ event.code ] = true;
     });
+
+    document.addEventListener( 'keyup', ( event ) => {
+        keyStates[ event.code ] = false;
+      });
+
+      window.addEventListener( 'resize', onWindowResize );
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize( window.innerWidth, window.innerHeight );
+    }
   </script>
 </body>
 </html>
