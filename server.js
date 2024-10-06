@@ -5,6 +5,10 @@ const path = require('path');
 const server = require("http").createServer(app);
 
 const players = {};
+let score = {
+    team1: 0,
+    team2: 0
+}
 
 const PORT = 5000;
 
@@ -41,6 +45,14 @@ io.on('connection', (socket) => {
     }
     //console.log(players)
     io.sockets.emit("players", players);
+    socket.emit('score', {team1: score.team1, team2: score.team2});
+
+    socket.on('goal', (data) => {
+        // Diffuser la position de la balle et des cubes aux autres clients
+        score[`team${data.team}`] += 1;
+        console.log(score)
+        io.sockets.emit('score', {team1: score.team1, team2: score.team2});
+    })
 
     // Envoyer la position des objets lorsque le client demande une mise à jour
     socket.on('updatePosition', (data) => {
