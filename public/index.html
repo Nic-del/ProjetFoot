@@ -211,6 +211,16 @@
       });
     }
 
+    function checkOutOfBounds() {
+      const marge = 1;
+      // Vérifier si la balle est sortie du terrain
+      if (ball.position.x + marge < -heightPlane / 2 || ball.position.x - marge > heightPlane / 2 || ball.position.z + marge < -widthPlane / 2 || ball.position.z - marge > widthPlane / 2) {
+        ball.position.set(0, 0.5, 0); // Remettre la balle au centre
+        velocity.set(0, 0, 0); // Arrêter la balle
+        sendBallPosition(); // Envoyer la nouvelle position de la balle
+      }
+    }
+
     // Ajouter deux cubes (joueurs)
     /*const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
     const player1Material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
@@ -232,6 +242,7 @@
       requestAnimationFrame(animate);
       updateBallPhysics();
       checkBut();
+      checkOutOfBounds();
       if (!ballColisions()) {
         sendBallPosition();
       }
